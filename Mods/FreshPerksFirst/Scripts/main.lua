@@ -1,9 +1,10 @@
 --[[
     FreshPerksFirst - Smart Perk Filtering for Grind Survivors
     ================================================================
-    In Infinity Mode, prevents already-owned perks from appearing in
-    level-up choices until ALL perks in their category group are owned.
-    Once a full category is learned, its perks re-enter the random pool.
+    In Infinity mode, unowned perks are prioritized in level-up choices.
+    Only when every perk has been learned will owned perks reappear.
+    When replacing owned perks, synergy skills may occasionally appear —
+    originally a bug, deliberately kept as a feature.
 
     Mechanism: Post-hooks on LevelUpWidget:Activate / RerollPerks.
     Modifies widget.Perks TArray; UI refresh via native DisplayPerks().
@@ -226,6 +227,19 @@ local function IsCategoryComplete(catName)
     return true
 end
 
+--- Check whether ALL categories are fully learned (every perk owned).
+--- When this returns true, there are no more unowned perks to offer,
+--- so owned perks must be allowed to appear again.
+---@return boolean
+local function IsAllCategoriesComplete()
+    for catName in pairs(categoryIndex) do
+        if not IsCategoryComplete(catName) then
+            return false
+        end
+    end
+    return true
+end
+
 ---@param oldTagName string
 ---@param excludeSet table<string, boolean>
 ---@return string?
@@ -290,8 +304,9 @@ local function FilterAndRefresh(widget)
 
     -- Step 1: Scan the current perk choices and identify which slots
     --         contain already-owned perks that need replacement.
-    --         We only replace owned perks whose category is NOT yet complete
-    --         (i.e., there are still unowned perks in that group).
+    --         We replace owned perks as long as ANY category still has
+    --         unowned perks. Only when ALL categories are fully learned
+    --         will owned perks be allowed to appear.
     ---@type table<integer, string>
     local choices = {}
     ---@type table<string, boolean>
@@ -310,9 +325,9 @@ local function FilterAndRefresh(widget)
             if cat then
                 local tag = perkTagRefs[tn]
                 if tag and perkSubsystem:IsPerkOwned(tag)
-                        and not IsCategoryComplete(cat) then
-                    -- This perk is already owned AND its category still has
-                    -- unowned perks → mark for replacement
+                        and not IsAllCategoriesComplete() then
+                    -- Perk is already owned but not all categories are fully
+                    -- learned yet → replace it with an unowned perk
                     table.insert(toReplace, i)
                 end
             end

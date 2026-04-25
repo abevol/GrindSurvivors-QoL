@@ -10,8 +10,8 @@ This repository manages all mods and their shared dependencies in one place, mak
 
 | Mod | Description |
 |-----|-------------|
-| **FreshPerksFirst** | In Infinity Mode, prevents already-owned perks from appearing in level-up choices until all perks in their category group are owned. Once a full category is learned, its perks re-enter the random pool. |
-| **PickupRangeXpBoost** | Converts the current `Stat.PickupRange` boost relative to the base value into bonus XP using a configurable ratio. Displays the boost percentage and bonus XP in real-time on screen. |
+| **FreshPerksFirst** | In Infinity mode, unowned perks are prioritized in level-up choices. Only when every perk has been learned will owned perks reappear. |
+| **PickupRangeXpBoost** | Converts the current pickup range boost relative to the base value into bonus XP using a configurable ratio. Displays the boost percentage and bonus XP in real-time on screen. |
 
 ## Installation
 
@@ -43,7 +43,7 @@ This repository manages all mods and their shared dependencies in one place, mak
 
 1. Launch the game and start any level.
 2. For **PickupRangeXpBoost**: check the top of the screen for an XP boost label (e.g. **"EXP + 70% (+3)"**).
-3. For **FreshPerksFirst**: level up in Infinity Mode and verify that already-owned perks are filtered from choices.
+3. For **FreshPerksFirst**: level up in Infinity mode and verify that unowned perks appear first.
 
 ---
 
@@ -53,7 +53,8 @@ This repository manages all mods and their shared dependencies in one place, mak
 
 - Post-hooks on `LevelUpWidget:Activate` / `RerollPerks`
 - Modifies `widget.Perks` TArray and updates SkillCard visuals
-- Prevents duplicate perks until their entire category is mastered
+- Prioritizes unowned perks in level-up choices until all perks are learned
+- When replacing owned perks, synergy skills may occasionally appear—originally a bug, deliberately kept as a feature
 
 ### Console Commands
 
@@ -68,7 +69,7 @@ This repository manages all mods and their shared dependencies in one place, mak
 
 **Pickup Range → XP Boost Conversion.**
 
-- Converts the current `Stat.PickupRange` boost relative to the base value (360) into bonus XP
+- Converts the current pickup range boost relative to the base value (360) into bonus XP
 - Formula: `Bonus XP = Base XP × (Current Stat.PickupRange - 360) / 360 × XP_CONVERSION_RATE`
 - Default conversion ratio: `XP_CONVERSION_RATE = 1.0`
 - Calculates and grants bonus XP in batches every 500ms
