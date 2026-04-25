@@ -6,7 +6,7 @@
     Once a full category is learned, its perks re-enter the random pool.
 
     Mechanism: Post-hooks on LevelUpWidget:Activate / RerollPerks.
-    Modifies widget.Perks TArray and updates SkillCard visuals.
+    Modifies widget.Perks TArray; UI refresh via native DisplayPerks().
 ]]
 
 local UEHelpers = require("UEHelpers")
@@ -81,28 +81,6 @@ local function GameplayTagToName(tag)
     return tagName
 end
 
----@alias FLinearColor {R: number, G: number, B: number, A: number}
-
----@param r number
----@param g number
----@param b number
----@param a number
----@return FLinearColor
-local function FLinearColor(r, g, b, a)
-    return { R = r, G = g, B = b, A = a }
-end
-
----@alias FSlateColor {SpecifiedColor: FLinearColor, ColorUseRule: integer}
-
----@param r number
----@param g number
----@param b number
----@param a number
----@return FSlateColor
-local function FSlateColor(r, g, b, a)
-    return { SpecifiedColor = FLinearColor(r, g, b, a), ColorUseRule = 0 }
-end
-
 ---@param text any
 ---@return string?
 local function TextToString(text)
@@ -113,45 +91,6 @@ local function TextToString(text)
         if ok and type(s) == "string" then return s end
     end
     return nil
-end
-
--- Perk descriptions may contain internal control markers (e.g. <RemoveBonus>).
--- RichTextBlock does not necessarily know these tags, so sanitize before SetText.
----@param descText any
----@return string
-local function SanitizePerkDescriptionText(descText)
-    local s = TextToString(descText)
-    if not s or s == "" then
-        -- Return original if we couldn't extract text (it may be an FText we can pass through)
-        ---@type string
-        return descText
-    end
-
-    s = s:gsub("\r\n", "\n")
-    s = s:gsub("\r", "\n")
-    s = s:gsub("</>", "\n")
-    s = s:gsub("<[bB][rR]%s*/?>", "\n")
-
-    -- Remove paired/simple XML-like tags while preserving inner text.
-    s = s:gsub("</[%w_]+>", "")
-    s = s:gsub("<[%w_]+>", "")
-    s = s:gsub("<[^>]->", "")
-
-    -- Cleanup around line breaks.
-    s = s:gsub("[ \t]+\n", "\n")
-    s = s:gsub("\n[ \t]+", "\n")
-    s = s:gsub("\n\n\n+", "\n\n")
-
-    return s
-end
-
----@param textBlock UObject?
----@return string?
-local function GetTextBlockString(textBlock)
-    if not textBlock or not textBlock:IsValid() or not textBlock.GetText then
-        return nil
-    end
-    return TextToString(textBlock:GetText())
 end
 
 ---------------------------------------------------------------------------
@@ -325,96 +264,6 @@ local function GetReplacementForPerk(oldTagName, excludeSet)
 end
 
 ---------------------------------------------------------------------------
--- SkillCard visual update
----------------------------------------------------------------------------
-
----@param card USkillCard_C
----@param tag FGameplayTag
----@param tagName string?
-local function UpdateCardVisual(card, tag, tagName)
-    DebugLog(string.format("UpdateCardVisual: %s, %s", tag, tagName))
-    if not card or not card:IsValid() then return end
-
-    if card.SkillIcon and card.SkillIcon:IsValid() then
-        card.SkillIcon:SetPerkTag(tag)
-    end
-
-    ---@type FPerk?
-    local info = nil
-    if perkSubsystem and perkSubsystem:IsValid() and perkSubsystem.GetPerkInfo then
-        info = perkSubsystem:GetPerkInfo(tag)
-    end
-    if info then
-        if card.NewTitleText and card.NewTitleText:IsValid() and info.DisplayName then
-            card.NewTitleText:SetText(info.DisplayName)
-        end
-        if card.PerkDesc and card.PerkDesc:IsValid() and info.Description then
-            local cleanDesc = SanitizePerkDescriptionText(info.Description)
-            card.PerkDesc:SetText(cleanDesc)
-            if card.PerkDesc.RefreshTextLayout then
-                card.PerkDesc:RefreshTextLayout()
-            end
-        end
-    end
-
-    if card["Set Card Appearence Color"] then
-        card["Set Card Appearence Color"](card, tag)
-    end
-
-    if perkSubsystem and perkSubsystem:IsValid() and perkSubsystem.GetPerkAmount and card.SetPerkLevel then
-        local amt = perkSubsystem:GetPerkAmount(tag)
-        if type(amt) == "number" then
-            card:SetPerkLevel(amt)
-        end
-    end
-
-    if card.WBP_SynergyHint and card.WBP_SynergyHint:IsValid() then
-        ---@type UWBP_SynergyHint_C?
-        local hint = card.WBP_SynergyHint
-        if hint["Generate Synergy List"] then
-            hint["Generate Synergy List"](hint, tag)
-        end
-        if hint.UpdateState then
-            hint:UpdateState(tag)
-        end
-    end
-
-    -- Highlight the new perk's icon in the SkillTree
-    local highlightColor = FSlateColor(1, 1, 0, 1)
-    if card.SkillTree and card.SkillTree:IsValid() then
-        ---@type UGSSkillTree
-        local tree = card.SkillTree
-        local newTagName = tagName or GameplayTagToName(tag)
-        if not newTagName then return end
-        DebugLog(string.format("Highlighting newTagName: %s", newTagName))
-
-        ---@param icon UGSSkillIcon?
-        local function HighlightIconIfMatched(icon)
-            if icon and icon:IsValid() then
-                local iconTag = icon.PerkTag
-                if iconTag then
-                    local tn = GameplayTagToName(iconTag)
-                    DebugLog(string.format("Icon tag: %s", tn))
-                    if tn == newTagName then
-                        if icon.HighlightIcon then
-                            icon:HighlightIcon(true)
-                        end
-                        icon.BG:SetBrushTintColor(highlightColor)
-                    end
-                end
-            end
-        end
-
-        for i = 0, 3 do
-            local field = "Skill" .. i
-            HighlightIconIfMatched(tree[field])
-        end
-    end
-
-    DebugLog(string.format("Card updated -> %s", tagName or "?"))
-end
-
----------------------------------------------------------------------------
 -- Main filter: modify widget.Perks + refresh cards
 ---------------------------------------------------------------------------
 
@@ -478,16 +327,11 @@ local function FilterAndRefresh(widget)
         return
     end
 
-    ---@type TArray<USkillCard_C>
-    local perkCards = widget.PerkCards
-
     -- Step 2: For each slot marked for replacement, find a suitable
     --         unowned perk (preferring the same category) and write it
     --         into the `perks` TArray. Try three strategies for writing
     --         the FGameplayTag since the struct layout may vary.
     local replaced = 0
-    ---@type {slot: integer, oldName: string, newName: string, newTag: FGameplayTag}[]
-    local replacedEntries = {}
     for _, si in ipairs(toReplace) do
         local oldName = choices[si]
         local newName = GetReplacementForPerk(oldName, choiceSet)
@@ -529,12 +373,6 @@ local function FilterAndRefresh(widget)
                 .. "Card visual updated but SelectPerk may pick wrong perk.", si))
         end
 
-        table.insert(replacedEntries, {
-            slot = si,
-            oldName = oldName,
-            newName = newName,
-            newTag = newTag,
-        })
         choiceSet[newName] = true
         replaced = replaced + 1
         DebugLog(string.format("    tag %s -> %s%s",
@@ -542,15 +380,11 @@ local function FilterAndRefresh(widget)
         ::next_slot::
     end
 
-    -- Step 3: Apply the filtered perks to the UI
+    -- Step 3: Apply the filtered perks to the UI via native DisplayPerks()
     if replaced > 0 then
-        -- Step 3a: Try the native DisplayPerks() method, which should rebuild
-        --          the SkillCard widgets from the updated `perks` TArray
-        local nativeRefreshOk = false
         if widget.DisplayPerks then
             local ok, err = pcall(function() widget:DisplayPerks() end)
             if ok then
-                nativeRefreshOk = true
                 Log("DisplayPerks() called")
             else
                 Log("DisplayPerks() failed: " .. tostring(err))
@@ -559,7 +393,7 @@ local function FilterAndRefresh(widget)
             Log("DisplayPerks() unavailable on widget")
         end
 
-        -- Step 3b: Also recalc perk levels on the skill cards
+        -- Recalc perk levels on the skill cards
         if widget.CalculateSkillCardsPerkLevel then
             local ok, err = pcall(function() widget:CalculateSkillCardsPerkLevel() end)
             if ok then
@@ -568,57 +402,9 @@ local function FilterAndRefresh(widget)
                 Log("CalculateSkillCardsPerkLevel() failed: " .. tostring(err))
             end
         end
-
-        -- Step 3c: Validate each replaced card's title text.
-        --          If native refresh worked and the title matches, great.
-        --          Otherwise, manually update the card visuals via UpdateCardVisual().
-        local nativeOkCount = 0
-        local fallbackCount = 0
-        for _, entry in ipairs(replacedEntries) do
-            local si = entry.slot
-            ---@type USkillCard_C?
-            local card = perkCards and perkCards[si] or nil
-            if not card or not card:IsValid() then
-                Log(string.format("Card[%d] missing after replacement (%s -> %s)",
-                    si, tostring(entry.oldName), tostring(entry.newName)))
-                goto continue_validate
-            end
-
-            ---@type FPerk?
-            local info = nil
-            if perkSubsystem and perkSubsystem:IsValid() and perkSubsystem.GetPerkInfo then
-                info = perkSubsystem:GetPerkInfo(entry.newTag)
-            end
-            local expectedTitle = info and TextToString(info.DisplayName) or nil
-            local actualTitle = GetTextBlockString(card.NewTitleText)
-
-            if nativeRefreshOk and expectedTitle and actualTitle and expectedTitle == actualTitle then
-                -- Native DisplayPerks() correctly set this card's title → no manual intervention needed
-                nativeOkCount = nativeOkCount + 1
-                DebugLog(string.format("Native refresh OK card[%d]: title='%s' (tag=%s)",
-                    si, expectedTitle, entry.newName))
-            else
-                -- Native refresh either didn't run or didn't take effect on this card
-                fallbackCount = fallbackCount + 1
-                Log(string.format(
-                    "Fallback card[%d] %s->%s | expectedTitle='%s' actualTitle='%s'",
-                    si,
-                    tostring(entry.oldName),
-                    tostring(entry.newName),
-                    tostring(expectedTitle),
-                    tostring(actualTitle)
-                ))
-                -- Manually update icon, title, description, color, level, and synergy hint
-                UpdateCardVisual(card, entry.newTag, entry.newName)
-            end
-            ::continue_validate::
-        end
-
-        Log(string.format("Filtered %d/%d perks | native_ok=%d fallback=%d",
-            replaced, #toReplace, nativeOkCount, fallbackCount))
-    else
-        Log(string.format("Filtered %d/%d perks", replaced, #toReplace))
     end
+
+    Log(string.format("Filtered %d/%d perks", replaced, #toReplace))
     inFilter = false
 end
 
