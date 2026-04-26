@@ -6,6 +6,8 @@
 
 本仓库统一管理所有模组及其共享依赖，简化安装和更新流程。
 
+<video src="https://github.com/user-attachments/assets/2bd0c45f-4787-4523-850a-1a77c10a4348" controls="controls" width="100%" autoplay="autoplay" muted="muted" loop="loop"></video>
+
 ## 模组列表
 
 | 模组 | 说明 |

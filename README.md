@@ -6,6 +6,8 @@ A collection of quality-of-life (QoL) mods for the UE5 game **Grind Survivors**,
 
 This repository manages all mods and their shared dependencies in one place, making installation and updates simple.
 
+<video src="https://github.com/user-attachments/assets/2bd0c45f-4787-4523-850a-1a77c10a4348" controls="controls" width="100%" autoplay="autoplay" muted="muted" loop="loop"></video>
+
 ## Mods
 
 | Mod | Description |
